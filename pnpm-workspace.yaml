@@ -1,12 +1,7 @@
 packages:
   - "apps/*"
 
-allowBuilds:
-  '@prisma/engines': true
-  argon2: true
-  prisma: true
-  sharp: true
-  unrs-resolver: true
+nodeLinker: hoisted
 
 onlyBuiltDependencies:
   - "@prisma/client"
@@ -15,3 +10,11 @@ onlyBuiltDependencies:
   - argon2
   - sharp
   - unrs-resolver
+
+allowBuilds:
+  "@prisma/engines": true
+  "@scarf/scarf": true
+  argon2: true
+  prisma: true
+  sharp: true
+  unrs-resolver: true

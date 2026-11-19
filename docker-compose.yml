@@ -1,44 +1,90 @@
 services:
-  backend:
-    build:
-      context: .
-      dockerfile: infrastructure/docker/backend.Dockerfile
-    container_name: care-backend
-    working_dir: /app
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./apps/backend:/app
-    env_file:
-      - ./apps/backend/.env
-    depends_on:
-      - postgres
-      - redis
-
   postgres:
     build:
       context: .
       dockerfile: infrastructure/docker/postgres.Dockerfile
     container_name: care-postgres
+    restart: unless-stopped
     ports:
-      - "5432:5432"
+      - "5435:5432"
     environment:
       POSTGRES_DB: care_compliance
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d care_compliance"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 3s
 
   redis:
     build:
       context: .
       dockerfile: infrastructure/docker/redis.Dockerfile
     container_name: care-redis
+    restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "6381:6379"
     volumes:
       - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 2s
+
+  backend:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/backend.Dockerfile
+    container_name: care-backend
+    restart: unless-stopped
+    working_dir: /app
+    ports:
+      - "3001:3001"
+    volumes:
+      - uploads-data:/app/uploads
+    # Load all vars from apps/backend/.env (MAIL_*, GEMINI_API_KEY, etc.)
+    env_file:
+      - ./apps/backend/.env
+    environment:
+      # These override the .env values to use Docker service hostnames
+      - PORT=3001
+      - NODE_ENV=development
+      - API_PREFIX=api
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/care_compliance
+      - JWT_ACCESS_SECRET=care-compliance-access-secret-2026-super-secure-key
+      - JWT_REFRESH_SECRET=care-compliance-refresh-secret-2026-super-secure-key
+      - JWT_ACCESS_EXPIRES=15m
+      - JWT_REFRESH_EXPIRES=7d
+    command: sh -c "npx prisma db push && pnpm start:prod"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/frontend.Dockerfile
+    container_name: care-frontend
+    restart: unless-stopped
+    working_dir: /app
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:3001/api/v1
+      - NEXT_PUBLIC_APP_ENV=development
+      - PORT=3000
+    depends_on:
+      - backend
 
 volumes:
   postgres-data:
   redis-data:
+  uploads-data:

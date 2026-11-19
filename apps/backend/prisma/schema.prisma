@@ -6,42 +6,280 @@ datasource db {
   provider = "postgresql"
 }
 
-enum UserStatus {
-  ACTIVE
-  INACTIVE
-}
-
 enum UserRole {
   ADMIN
   MANAGER
   STAFF
 }
 
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  INVITED
+}
+
+enum NotificationType {
+  INFO
+  WARNING
+  SUCCESS
+  ERROR
+}
+
+enum NotificationStatus {
+  UNREAD
+  READ
+}
+
+enum CertificateStatus {
+  VALID
+  EXPIRING
+  EXPIRED
+}
+
 model User {
-  id           String      @id @default(cuid())
-  email        String      @unique
-  passwordHash String
-  role         UserRole    @default(STAFF)
-  status       UserStatus  @default(ACTIVE)
+  id               String      @id @default(cuid())
+  email            String      @unique
+  passwordHash     String
 
-  staff Staff?
+  role             UserRole    @default(STAFF)
+  status           UserStatus  @default(ACTIVE)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  refreshTokenHash String?
+  passwordResetOtp        String?
+  passwordResetOtpExpires DateTime?
+
+  failedLoginAttempts     Int       @default(0)
+  lockoutUntil            DateTime?
+  invitationToken         String?   @unique
+  invitationTokenExpires  DateTime?
+
+  staff            Staff?
+
+  organizationId   String?
+  organization     Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  notifications    Notification[]
+  auditLogs        AuditLog[]
+  sentMessages     ChatMessage[]  @relation("SentMessages")
+  receivedMessages ChatMessage[]  @relation("ReceivedMessages")
+
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@index([email])
+  @@index([role])
+  @@index([status])
+  @@index([organizationId])
 }
 
 model Staff {
-  id          String   @id @default(cuid())
-  firstName   String
-  lastName    String
-  employeeNo  String   @unique
-  phone       String?
-  dateOfBirth DateTime?
-  hireDate    DateTime
+  id              String   @id @default(cuid())
 
-  userId String @unique
-  user   User   @relation(fields: [userId], references: [id])
+  employeeNo      String   @unique
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  firstName       String
+  lastName        String
+
+  jobTitle        String?
+  department      String?
+  employmentType  String?  @default("Full-Time")
+  dbsNumber       String?
+  nationalInsuranceNo String?
+
+  phone           String?
+  address         String?
+  avatarUrl       String?
+
+  hireDate        DateTime
+  dateOfBirth     DateTime?
+  emergencyContact String?
+
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id])
+
+  organizationId   String?
+  organization     Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  trainings       Training[]
+  competencies    Competency[]
+  certificates    Certificate[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([employeeNo])
+  @@index([lastName])
+  @@index([firstName])
+  @@index([jobTitle])
+  @@index([department])
+  @@index([organizationId])
+}
+
+model Organization {
+  id                 String   @id @default(cuid())
+  name               String
+  address            String?
+  postcode           String?
+  rating             String?  @default("Good")
+  registrationNumber String?
+  status             String?  @default("ACTIVE")
+  phone              String?
+  email              String?
+  bedCapacity        Int?      @default(0)
+  subscriptionPlan   String?   @default("Standard")
+  subscriptionStatus String?   @default("ACTIVE")
+  subscriptionExpiry DateTime?
+  users              User[]
+  staff              Staff[]
+  chatMessages       ChatMessage[]
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model Training {
+  id           String   @id @default(cuid())
+
+  title        String
+  provider     String
+
+  completedOn  DateTime
+  expiresOn    DateTime?
+
+  staffId      String
+  staff        Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([staffId])
+  @@index([title])
+  @@index([expiresOn])
+}
+
+model Competency {
+  id           String   @id @default(cuid())
+
+  name         String
+  level        String
+
+  achievedOn   DateTime
+  expiresOn    DateTime?
+
+  staffId      String
+  staff        Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  assessorNotes String?
+  signature     String?
+  evidenceUrl   String?
+  checklist     Json?
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([staffId])
+  @@index([name])
+}
+
+model Certificate {
+  id             String            @id @default(cuid())
+
+  title          String
+  issuer         String
+
+  issueDate      DateTime
+  expiryDate     DateTime?
+
+  status         CertificateStatus @default(VALID)
+
+  certificateNo  String?           @unique
+
+  fileUrl        String?
+
+  staffId        String
+  staff          Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([staffId])
+  @@index([title])
+  @@index([issuer])
+  @@index([expiryDate])
+}
+
+model Notification {
+  id            String             @id @default(cuid())
+
+  title         String
+  message       String
+
+  type          NotificationType   @default(INFO)
+  status        NotificationStatus @default(UNREAD)
+
+  referenceId   String?
+  referenceType String?
+
+  userId        String
+  user          User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([referenceId, referenceType])
+}
+
+model ChatMessage {
+  id             String   @id @default(cuid())
+
+  senderId       String
+  sender         User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+
+  receiverId     String
+  receiver       User     @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  message        String
+  messageType    String   @default("TEXT") // TEXT, WARNING, SYSTEM, AUDIT_NOTICE
+
+  courseTitle    String?
+  expiryDate     String?
+  statusType     String?  // EXPIRED, EXPIRING
+
+  read           Boolean  @default(false)
+  readAt         DateTime?
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime @default(now())
+
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([organizationId])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id          String @id @default(cuid())
+
+  action      String
+  entity      String
+  entityId    String?
+
+  description String?
+
+  ipAddress   String?
+  userAgent   String?
+
+  userId      String?
+  user        User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([entity])
+  @@index([action])
+  @@index([createdAt])
 }

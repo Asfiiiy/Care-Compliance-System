@@ -2,15 +2,20 @@ FROM node:22-alpine
 
 WORKDIR /app
 
+RUN npm install -g pnpm@11.10.0
+
 COPY apps/backend/package.json ./
 
-RUN corepack enable
-RUN corepack prepare pnpm@11.10.0 --activate
-
-RUN pnpm install
+ENV CI=true
+RUN echo "dangerouslyAllowAllBuilds: true" > pnpm-workspace.yaml
+RUN pnpm install --no-frozen-lockfile
 
 COPY apps/backend .
 
-EXPOSE 3000
+# Generate Prisma Client & Build backend dist bundle at build-time
+RUN npx prisma generate
+RUN pnpm build
 
-CMD ["pnpm", "start:dev"]
+EXPOSE 3001
+
+CMD ["pnpm", "start:prod"]
